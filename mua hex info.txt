@@ -1,0 +1,146 @@
+////////////////////////////////////////////////////////////////////////////////0
+0x0-0x20 //header
+0x4 version
+0x8 chunk count
+0x20-0xA7(0xAF when char3d_ta)value save as 4 bytes address and 4 bytes count
+
+////////////////////////////////////////////////////////////////////////////////1
+skeleton
+devide it by: 0x20
+0x0-0x3 offset
+0x4-0x7 bones count
+0x8 unknown
+0xc unknown
+0x10 skeleton type?
+0x14 12 bytes 00
+
+////////////////////////////////////////////////////////////////////////////////2
+bone
+devide it by: 0x130
+0x0 //name string index //uint32.
+0x4 //bone type
+0x8 //bone Translation
+0x14//Rotation (radian)
+0x20//Scaling
+0x2C//bone tail ?
+0x38 //bone index //uint32
+0x3c //parent bone index
+0X40 //child bone index
+0x44 //next same level bone index
+0x48 //three 4x4 Column-major order matrix //3 Transform matrix from 3 axis
+0x10c 4 animation value index 
+0x11c 20 bytes 00
+
+////////////////////////////////////////////////////////////////////////////////3
+mesh
+devide it by: 0xC0
+0x0 weight skeleton index
+0x4 4 bytes 00
+0x8 set of polygons count
+0xC set of polygons offset
+0x10 vertex count
+0x14 vertex offset
+0x18 mesh value(don't kown how to edit)
+0xB4 name string index
+0xB8 root skeleton index
+0xBC 4 bytes 00
+
+////////////////////////////////////////////////////////////////////////////////4
+set of polygons(used for sign matirial)
+devide it by: 0x20
+0x0 matirial index 
+0x4 face triangle list count
+0x8 face triangle offset
+//blow only find in char3d_ta
+0xc evb value offset
+0x10 evb value count
+
+////////////////////////////////////////////////////////////////////////////////5
+matirial 
+devide it by: 0x50
+0x0 texture assign count
+0x4 offset
+0x8 4 bytes 00
+0xc matirial value (don't know how to edit,but can just copy from the other)
+0x3c offset related with chuck11
+0x40 frame count 
+
+////////////////////////////////////////////////////////////////////////////////6
+texture assign
+devide it by: 0x20
+0x0-0x3 matirial Index
+0x4-0x7 texture name index
+0x8 texture animation keyframe count
+0xc texture animation offset
+
+////////////////////////////////////////////////////////////////////////////////7
+texture  name
+devide it by: 0x10
+0x0 texture name string index
+
+////////////////////////////////////////////////////////////////////////////////8
+texture animation
+devide it by: 0x1c
+0x0 texture x axis
+0x4 texture y axis 
+0x8 texture rotation?
+0xc texture scale?
+0x10 frame
+
+////////////////////////////////////////////////////////////////////////////////9
+animation list
+devide it by: 0x10
+
+////////////////////////////////////////////////////////////////////////////////10
+animation value
+chunk9 10 works same as mmot.
+
+////////////////////////////////////////////////////////////////////////////////11
+matirial color blend?
+devide it by block:0x20
+0x0 color value
+0x4 3 float 1.0(not checked used for what)
+0x10 16 bytes 00
+
+////////////////////////////////////////////////////////////////////////////////12
+evb string index
+devide it by block:0x10
+
+////////////////////////////////////////////////////////////////////////////////13
+mesh and set of polygons index
+devide it by block:0x20
+0x0-0x3 mesh index
+0x4-0x7 set index
+
+////////////////////////////////////////////////////////////////////////////////14
+vertices info
+devide it by block:0x50
+0x0 Position //float
+0xC normal //float
+0x18 tangent //float
+0x24 uv //float
+0x2c none
+0x34 vertext color//bytes
+0x38 3 bone index//float
+0x44 3 weight// float
+
+////////////////////////////////////////////////////////////////////////////////15
+face triangle list
+
+////////////////////////////////////////////////////////////////////////////////16
+string info
+devide it by block:0x10
+0x0-0x3 offset
+0x4-0x7 length
+
+////////////////////////////////////////////////////////////////////////////////17
+string:
+{
+bones name
+mesh name
+texture name
+evb file name
+}
+////////////////////////////////////////////////////////////////////////////////18
+only founded in char3d_ta
+same as .evb file data
