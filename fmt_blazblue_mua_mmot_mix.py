@@ -1,6 +1,7 @@
 from inc_noesis import *
 import noesis
 import rapi
+import os
 
 def registerNoesisTypes():
 	handle = noesis.register("BLAZEBLUE", ".MUA")
@@ -91,16 +92,22 @@ def noepyLoadModel(data, mdlList):
             stringlength.append(bs.readUInt())
             SIAddress += 0x10
             bs.seek(SAddress + stringoffset[i] , NOESEEK_ABS)
-            Name.append(bs.readBytes(stringlength[i]))
+            Name.append(bs.readString())
             
     #material and texture
     MTIndex = []#Matirial texture index
     TNAIndex = []#Texture Name Assign Index
     TNIndex = []#Texture Name Index
+    Texs = []
     Mat = []
-    for i in range(0, TNCount):#Texture Name
+    Mpath = noesis.getSelectedDirectory()
+    for i in range(0, TNCount):#Texture Name Index
         bs.seek(TNAddress, NOESEEK_ABS)
         TNIndex.append(bs.readInt())
+        Tpath = os.path.join(Mpath,Name[TNIndex[i]])
+        Texs.append(rapi.loadExternalTex(Tpath))
+        if Texs[i]:
+            Texs[i].name = Name[TNIndex[i]]
         TNAddress += 0x10
     
     for i in range(0, TACount):#Texture Assign
@@ -113,7 +120,7 @@ def noepyLoadModel(data, mdlList):
         bs.seek(MTAddress,NOESEEK_ABS)
         MTACount = bs.readInt()
         MTAOffset = bs.readInt()
-        Mat.append(NoeMaterial(i,Name[TNIndex[TNAIndex[MTAOffset]]]))
+        Mat.append(NoeMaterial(Name[TNIndex[TNAIndex[MTAOffset]]],Name[TNIndex[TNAIndex[MTAOffset]]]))
         if MTACount == 2:
             Mat[i].setOcclTexture(Name[TNIndex[TNAIndex[MTAOffset+1]]])
         MTAddress += 0x50
@@ -187,7 +194,7 @@ def noepyLoadModel(data, mdlList):
                     KFVIndex.append(bs.readUInt())
                     KFVIndex.append(bs.readUInt())
                     KFVIndex.append(bs.readUInt())
-                    bones.append(NoeBone(b,str(Name[boneNameIndex]), boneMat, None , bonePIndex))
+                    bones.append(NoeBone(b,Name[boneNameIndex], boneMat, None , bonePIndex))
                     BAddress += 0x130
             for b in range(0, SKcount[sk]):
                     p = bones[b].parentIndex
@@ -200,9 +207,10 @@ def noepyLoadModel(data, mdlList):
     partIndex = 0
     for i in range(0, MCount):
         for j in range(0, MPCount[i]):
-            #rapi.rpgSetName(str(Name[MNIndex[i]]))
+            #rapi.rpgSetName(Name[MNIndex[i]])
             bs.seek(VAddress , NOESEEK_ABS)
             VBuffer = bs.readBytes(MVCount[i] * 0x50)
+            rapi.rpgOptimize()
             rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
             rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
             rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
@@ -212,18 +220,16 @@ def noepyLoadModel(data, mdlList):
             rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
             bs.seek(FAddress, NOESEEK_ABS)
             FBuffer = bs.readBytes(PFCount[partIndex] * 0x2)
+            rapi.rpgSetMaterial(Mat[PMIndex[partIndex]].name)
             rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, PFCount[partIndex], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
-            rapi.rpgSetMaterial(str(Mat[PMIndex[partIndex]].name))
             FAddress += PFCount[partIndex] * 0x2
             partIndex += 1
             rapi.rpgClearBufferBinds()
         VAddress += MVCount[i] * 0x50
-        mdl = rapi.rpgConstructModel()
+        mdl = rapi.rpgConstructModelAndSort()
         mdlList.append(mdl)
-        mdlList[i].meshes[0].setName(str(Name[MNIndex[i]]))
+        mdlList[i].meshes[0].setName(Name[MNIndex[i]])
         mdlList[i].setBones(skeletons[int(MeshSkeletonIndex[i])])
-        rapi.rpgClearBufferBinds()
-        rapi.rpgReset()
     
     #animetion
     anims = []
@@ -328,7 +334,7 @@ def noepyLoadModel(data, mdlList):
     
         for s in range(0, SICount2):
                 ab.seek(SAddress2 + stringoffset2[s] , NOESEEK_ABS)
-                Name2.append(ab.readBytes(stringlength2[s]))
+                Name2.append(ab.readString(stringlength2[s]))
             
         #bone
         bones = []
@@ -392,14 +398,14 @@ def noepyLoadModel(data, mdlList):
                 shearKeys = []
                 scaleKeys = []
                 ALAddress += 0x40
-        anims.append(NoeKeyFramedAnim(str(Name2[0]), bones, kfBones, frameRate = 1, flags = 0))
+        anims.append(NoeKeyFramedAnim(Name2[0], bones, kfBones, frameRate = 1, flags = 0))
         #assign mesh
         for i in range(0,LMCount):
             ab.seek(LMAddress + 0x4, NOESEEK_ABS)
             LMNIndex = ab.readUInt()
             LMAddress += 0x20
             for j in range(0,MCount):
-                if str(Name2[LMNIndex]) == str(mdlList[j].meshes[0].name):
+                if Name2[LMNIndex] == str(mdlList[j].meshes[0].name):
                     mdlList[j].setAnims(anims)
     
     rapi.setPreviewOption("drawAllModels","1")
