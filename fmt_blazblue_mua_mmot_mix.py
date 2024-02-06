@@ -92,7 +92,8 @@ def noepyLoadModel(data, mdlList):
             stringlength.append(bs.readUInt())
             SIAddress += 0x10
             bs.seek(SAddress + stringoffset[i] , NOESEEK_ABS)
-            Name.append(bs.readString())
+            Name.append(bs.readBytes(stringlength[i]).decode("Shift_JIS"))
+            #bytes -> "Shift_JIS" -> utf8
             
     #material and texture
     MTIndex = []#Matirial texture index
@@ -165,16 +166,15 @@ def noepyLoadModel(data, mdlList):
     bones = []
     skeletons = []
     SKoffset = []
-    SKcount = []
+    SKBcount = []
     SKBoneIndex = []
     KFcount = []#defult animation key frame count
-    KFVIndex = []#key frame value Index
     for sk in range(0, SKCount):
             bs.seek(SKAddress)
             SKoffset.append(bs.readUInt())
-            SKcount.append(bs.readUInt())
+            SKBcount.append(bs.readUInt())
             SKAddress += 0x20
-            for b in range(0, SKcount[sk]):
+            for b in range(0, SKBcount[sk]):
                     bs.seek(BAddress, NOESEEK_ABS)
                     boneNameIndex = bs.readUInt()
                     boneType = bs.readUInt()
@@ -190,13 +190,9 @@ def noepyLoadModel(data, mdlList):
                     boneMat = Mat44.toMat43()
                     bs.seek(BAddress + 0x108 , NOESEEK_ABS)
                     KFcount.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
                     bones.append(NoeBone(b,Name[boneNameIndex], boneMat, None , bonePIndex))
                     BAddress += 0x130
-            for b in range(0, SKcount[sk]):
+            for b in range(0, SKBcount[sk]):
                     p = bones[b].parentIndex
                     if p != -1:
                         bones[b].setMatrix(bones[b].getMatrix() * bones[p].getMatrix() )
@@ -232,15 +228,17 @@ def noepyLoadModel(data, mdlList):
         mdlList[i].setBones(skeletons[int(MeshSkeletonIndex[i])])
     
     #animetion
+    ASK = 0
     anims = []
     kfBones = []
     translationKeys = []
     rotationKeys = []
     shearKeys = []
     scaleKeys = []
-    for i in range(0,len(SKBoneIndex)):
-        if max(KFVIndex) > 0:
-            for j in range(0,len(skeletons[SKBoneIndex[i]])):
+    for i in range(0,SKCount):
+        for j in range(0,SKBcount[j]):
+            if KFcount[i]:
+                ASK = i
                 bs.seek(ALAddress + 0x4, NOESEEK_ABS)
                 trankeys = bs.readUInt()
                 bs.seek(ALAddress + 0x14, NOESEEK_ABS)
@@ -287,9 +285,9 @@ def noepyLoadModel(data, mdlList):
                 shearKeys = []
                 scaleKeys = []
                 ALAddress += 0x40
-        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[SKBoneIndex[i]], kfBones, frameRate = 1, flags = 0))
+        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[ASK], kfBones, frameRate = 1, flags = 0))
         for k in range(0, MCount):
-            if MeshSkeletonIndex[k] == SKBoneIndex[i]:
+            if MeshSkeletonIndex[k] == skeletons[ASK]:
                 mdlList[k].setAnims(anims)
     
     #Import animetion
