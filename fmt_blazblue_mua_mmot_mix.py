@@ -225,20 +225,19 @@ def noepyLoadModel(data, mdlList):
         mdl = rapi.rpgConstructModelAndSort()
         mdlList.append(mdl)
         mdlList[i].meshes[0].setName(Name[MNIndex[i]])
-        mdlList[i].setBones(skeletons[int(MeshSkeletonIndex[i])])
+        mdlList[i].setBones(skeletons[MeshSkeletonIndex[i]])
     
     #animetion
-    ASK = 0
     anims = []
     kfBones = []
     translationKeys = []
     rotationKeys = []
     shearKeys = []
     scaleKeys = []
+    boneIndex = 0
     for i in range(0,SKCount):
-        for j in range(0,SKBcount[j]):
-            if KFcount[i]:
-                ASK = i
+        for j in range(0, SKBcount[i]):
+            if KFcount[boneIndex]:
                 bs.seek(ALAddress + 0x4, NOESEEK_ABS)
                 trankeys = bs.readUInt()
                 bs.seek(ALAddress + 0x14, NOESEEK_ABS)
@@ -285,11 +284,15 @@ def noepyLoadModel(data, mdlList):
                 shearKeys = []
                 scaleKeys = []
                 ALAddress += 0x40
-        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[ASK], kfBones, frameRate = 1, flags = 0))
-        for k in range(0, MCount):
-            if MeshSkeletonIndex[k] == skeletons[ASK]:
-                mdlList[k].setAnims(anims)
-    
+            boneIndex += 1
+        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[i], kfBones, frameRate = 1, flags = 0))
+        kfBones = []
+        for o in range(0, MCount):
+            if MeshSkeletonIndex[o] == i:
+                mdlList[o].setAnims(anims)
+        anims = []
+                
+        
     #Import animetion
     ab = NoeBitStream(rapi.loadPairedFileOptional("model motion",".mmot"))
     if ab.data != None:
