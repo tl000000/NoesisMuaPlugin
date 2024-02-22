@@ -4,20 +4,19 @@ import rapi
 import os
 
 def registerNoesisTypes():
-	handle = noesis.register("BLAZEBLUE", ".MUA")
-	noesis.setHandlerTypeCheck(handle, noepyCheckType)
-	noesis.setHandlerLoadModel(handle, noepyLoadModel)
-	#noesis.setHandlerWriteModel(handle, noepyWriteModel)
+    handle = noesis.register("BLAZEBLUE", ".MUA")
+    noesis.setHandlerTypeCheck(handle, noepyCheckType)
+    noesis.setHandlerLoadModel(handle, noepyLoadModel)
+    noesis.setHandlerWriteModel(handle, noepyWriteModel)
 	#any noesis.NMSHAREDFL_* flags can be applied here, to affect the model which is handed off to the exporter.
 	#adding noesis.NMSHAREDFL_FLATWEIGHTS_FORCE4 would force us to 4 weights per vert.
-	noesis.setTypeSharedModelFlags(handle, noesis.NMSHAREDFL_FLATWEIGHTS)
-
-	#noesis.logPopup()
-	#print("The log can be useful for catching debug prints from preview loads.\nBut don't leave it on when you release your script, or it will probably annoy people.")
-	return 1
+    noesis.setTypeSharedModelFlags(handle, noesis.NMSHAREDFL_REVERSEWINDING)
+    #noesis.logPopup()
+    #print("The log can be useful for catching debug prints from preview loads.\nBut don't leave it on when you release your script, or it will probably annoy people.")
+    return 1
 
 NOEPY_HEADER = "MUA"
-	  
+headerdata = b'\x4D\x55\x41\x00\xEE\x03\x00\x00\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
 #check if it's this type based on the data
 def noepyCheckType(data):
@@ -64,7 +63,7 @@ def noepyLoadModel(data, mdlList):
     AAddress = addr[9]#animation key frame Value
     MPTAddress = addr[12]#meshes and parts Index table
     VAddress = addr[13]#vertext
-    FAddress = addr[14]#face
+    FAddress = addr[14]#face Triangle strip indices
     SIAddress = addr[15]#strng info,start from and length
     SAddress = addr[16]#string Name
     
@@ -148,14 +147,14 @@ def noepyLoadModel(data, mdlList):
         MAddress += 0xc0
     
     #part
-    PMIndex = []#parts Matirial Index
+    PMatIndex = []#parts Matirial Index
     PFCount = []#parts face triangle list count
     PFoffset = []
     PEvb = []#parts evb value count
     PEoffset = []
     for i in range(0, PCount):
         bs.seek(PAddress, NOESEEK_ABS)
-        PMIndex.append(bs.readInt())
+        PMatIndex.append(bs.readInt())
         PFCount.append(bs.readInt())
         PFoffset.append(bs.readInt())
         PEoffset.append(bs.readInt())
@@ -199,34 +198,42 @@ def noepyLoadModel(data, mdlList):
             skeletons.append(bones)
             bones = []
             
+    #meshes and parts Index table
+    MeshIndex = []
+    MpartIndex = []
+    for i in range(0, PCount):
+        bs.seek(MPTAddress , NOESEEK_ABS)
+        MeshIndex.append(bs.readUInt())
+        MpartIndex.append(bs.readUInt())
+        MPTAddress += 0x20
+    
     #model Consturct
-    partIndex = 0
+    PIndex = 0
     for i in range(0, MCount):
+        bs.seek(VAddress , NOESEEK_ABS)
+        VBuffer = bs.readBytes(MVCount[i] * 0x50)
+        rapi.rpgOptimize()
+        rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
+        rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
+        rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
+        rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
+        rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
+        rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
+        rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
         for j in range(0, MPCount[i]):
-            #rapi.rpgSetName(Name[MNIndex[i]])
-            bs.seek(VAddress , NOESEEK_ABS)
-            VBuffer = bs.readBytes(MVCount[i] * 0x50)
-            rapi.rpgOptimize()
-            rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
-            rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
-            rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
-            rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
-            rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
-            rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
-            rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
-            bs.seek(FAddress, NOESEEK_ABS)
-            FBuffer = bs.readBytes(PFCount[partIndex] * 0x2)
-            rapi.rpgSetMaterial(Mat[PMIndex[partIndex]].name)
-            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, PFCount[partIndex], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
-            FAddress += PFCount[partIndex] * 0x2
-            partIndex += 1
-            rapi.rpgClearBufferBinds()
+            bs.seek(FAddress + PFoffset[PIndex] * 0x2, NOESEEK_ABS)
+            FBuffer = bs.readBytes(PFCount[PIndex] * 0x2)
+            rapi.rpgSetMaterial(Mat[PMatIndex[PIndex]].name)
+            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, PFCount[PIndex], noesis.RPGEO_TRIANGLE_STRIP, 1)
+            PIndex += 1
         VAddress += MVCount[i] * 0x50
         mdl = rapi.rpgConstructModelAndSort()
         mdlList.append(mdl)
+        rapi.rpgClearBufferBinds()
+        rapi.rpgReset()
         mdlList[i].meshes[0].setName(Name[MNIndex[i]])
         mdlList[i].setBones(skeletons[MeshSkeletonIndex[i]])
-    
+        
     #animetion
     anims = []
     kfBones = []
@@ -333,10 +340,10 @@ def noepyLoadModel(data, mdlList):
                 stringlength2.append(ab.readUInt())
                 SIAddress2 += 0x10
     
-        for s in range(0, SICount2):
-                ab.seek(SAddress2 + stringoffset2[s] , NOESEEK_ABS)
-                Name2.append(ab.readString(stringlength2[s]))
-            
+        for i in range(0, SICount2):
+                ab.seek(SAddress2 + stringoffset2[i], NOESEEK_ABS)
+                Name2.append(bs.readBytes(stringlength2[i]).decode("Shift_JIS"))
+                
         #bone
         bones = []
         for b in range(0, ABCount):
@@ -410,8 +417,15 @@ def noepyLoadModel(data, mdlList):
                     mdlList[j].setAnims(anims)
     
     rapi.setPreviewOption("drawAllModels","1")
-    rapi.setPreviewOption("setAngOfs", "0 90 90")
+    #rapi.setPreviewOption("setAngOfs", "0 90 90")
     
-    rapi.rpgClearBufferBinds()
     return 1
     
+
+def noepyWriteModel(mdl, writer):
+    writer = NoeBitStream()
+    
+    open("somefile.MUA", "wb+").write(writer.getBuffer())
+    writer.writeBytes(headerdata)
+    
+    return 1

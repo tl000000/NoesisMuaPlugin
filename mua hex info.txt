@@ -40,7 +40,7 @@ devide it by: 0xC0
 0xC set of polygons offset
 0x10 vertex count
 0x14 vertex offset
-0x18 mesh value(don't kown how to edit)
+0x18 mesh value(don't kown how to edit)maybe lod refrence£¬cause make model invisible for some angle by edit to 0
 0xB4 name string index
 0xB8 root skeleton index
 0xBC 4 bytes 00
@@ -120,7 +120,7 @@ devide it by block:0x50
 0x18 tangent //float
 0x24 uv //float
 0x2c none
-0x34 vertext color//bytes
+0x34 vertext color//bytes BGRA
 0x38 3 bone index//float
 0x44 3 weight// float
 
