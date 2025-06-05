@@ -67,6 +67,8 @@ def readAddress(bs):
     [15]#strng info,start from and length
     [16]#string Name
     [17]evb data
+
+    NOT ALL DATA TYPE SUPPORT TO EXPORT IN NOESIS
     '''
     
     return addr,Num
@@ -112,7 +114,7 @@ def getbones(bs,Num,addr,Name):
                     boneNameIndex = bs.readUInt()
                     boneType = bs.readUInt()
                     if boneType == 5:
-                        SKBoneIndex.append(sk)
+                        SKBoneIndex.append(sk) 
                     Tran = NoeVec3.fromBytes(bs.readBytes(12))
                     Rot = NoeAngles.toDegrees((NoeVec3.fromBytes(bs.readBytes(12))))
                     Scal = NoeVec3.fromBytes(bs.readBytes(12))
@@ -123,19 +125,20 @@ def getbones(bs,Num,addr,Name):
                     boneMat = Mat44.toMat43()
                     bs.seek(BAddress + 0x108 , NOESEEK_ABS)
                     KFNum.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
-                    KFVIndex.append(bs.readUInt())
+                    if KFNum[b]:
+                        KFVIndex.append(bs.readUInt())
+                        KFVIndex.append(bs.readUInt())
+                        KFVIndex.append(bs.readUInt())
+                        KFVIndex.append(bs.readUInt())
                     bones.append(NoeBone(b,str(Name[boneNameIndex]), boneMat, None , bonePIndex))
                     BAddress += 0x130
-            for b in range(0, SKNum[sk]):
+            for b in range(0, SKboneNum[sk]):
                     p = bones[b].parentIndex
                     if p != -1:
                         bones[b].setMatrix(bones[b].getMatrix() * bones[p].getMatrix() )
             skeletons.append(bones)
 
-    return skeletons
+    return skeletons,SKBoneIndex,KFNum
 
 def getmatirals(bs,Num,addr,Name):
     MTIndex = []#Matirial texture index
@@ -164,97 +167,60 @@ def getmatirals(bs,Num,addr,Name):
         Mat.append(NoeMaterial(i,Name[TNIndex[TNAIndex[MTAOffset]]]))
         if MTANum == 2:
             Mat[i].setOcclTexture(Name[TNIndex[TNAIndex[MTAOffset+1]]])
+        if MTANum > 3:
+            print('undiscovered texturetype')
         MTAddress += 0x50
 
     return Mat
 
-def MUALoadModel(data, mdlList):
-    #no need to explicitly free the context (created contexts are auto-freed after the handler), but DO NOT hold any references to it outside of this method
-    ctx = rapi.rpgCreateContext()
-
-    #mua data
-    bs = NoeBitStream(data)
-    #mmot data
-    ab = NoeBitStream(rapi.loadPairedFileOptional("model motion",".mmot"))
-
-    #read data
-    addr,Num = readAddress(bs)
-    Name = getnames(bs,Num,addr)
-    Mat = getmatirals(bs,Num,addr,Name)
-    skeletons = getbones(bs,Num,addr,Name)
-    
-	#model
+def getmesh(bs,Num,addr):
     MeshSkeletonIndex = []#Mesh Skeleton Index
-    MPNum =[]#Mesh[i]mesh parts Num
-    MPoffeet =[]
-    MVNum = []#Mesh[i] vertext Num
+    MGNum =[]#mesh vertex group Num
+    MGoffeet =[]
+    MVNum = []#mesh vertext Num
     MVoffset = []
     MNIndex = []#Mesh Name Index
     MSRIndex = []#Mesh Scence Root Skeleton Index
-    for i in range(0, MNum):
+    GMIndex = []#group Matirial Index
+    GFNum = []#group face triangle list Num
+    GFoffset = []
+    GEvb = []#group evb value Num
+    GEoffset = []
+    MAddress = addr[2]
+    GAddress = addr[3]
+
+    for i in range(0, Num[2]):
         bs.seek(MAddress, NOESEEK_ABS)
         MeshSkeletonIndex.append(int(bs.readFloat()))
         bs.seek(MAddress + 0x8, NOESEEK_ABS)
-        MPNum.append(bs.readInt())
-        MPoffeet.append(bs.readInt())
+        MGNum.append(bs.readInt())
+        MGoffeet.append(bs.readInt())
         MVNum.append(bs.readInt())
         MVoffset.append(bs.readInt())
         bs.seek(MAddress + 0xB4, NOESEEK_ABS)
         MNIndex.append(bs.readInt())
         MSRIndex.append(bs.readInt())
         MAddress += 0xc0
-    
-    #part
-    PMIndex = []#parts Matirial Index
-    PFNum = []#parts face triangle list Num
-    PFoffset = []
-    PEvb = []#parts evb value Num
-    PEoffset = []
-    for i in range(0, PNum):
-        bs.seek(PAddress, NOESEEK_ABS)
-        PMIndex.append(bs.readInt())
-        PFNum.append(bs.readInt())
-        PFoffset.append(bs.readInt())
-        PEoffset.append(bs.readInt())
-        PEvb.append(bs.readInt())
-        PAddress += 0x20
-            
-    #model Consturct
-    for i in range(0, MNum):
-        #vertex
-        #rapi.rpgSetName(str(Name[MNIndex[i]]))
-        bs.seek(VAddress, NOESEEK_ABS)
-        VBuffer = bs.readBytes(MVNum[i] * 0x50)
-        rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
-        rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
-        rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
-        rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
-        rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
-        rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
-        rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
-        for j in range(0, MPNum[i]):
-            #face
-            bs.seek(FAddress , NOESEEK_ABS)
-            FBuffer = bs.readBytes(PFNum[j] * 0x2)
-            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, PFNum[j], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
-            rapi.rpgSetMaterial(str(Mat[PMIndex[i]].name))
-            rapi.rpgClearBufferBinds()
+        for j in range(0, MGNum[i]):
+            bs.seek(GAddress, NOESEEK_ABS)
+            GMIndex.append(bs.readInt())
+            GFNum.append(bs.readInt())
+            GFoffset.append(bs.readInt())
+            GEoffset.append(bs.readInt())
+            GEvb.append(bs.readInt())
+            GAddress += 0x20
 
-    rapi.rpgSkinPreconstructedVertsToBones(skeletons[int(MeshSkeletonIndex[i])])
-    mdl = rapi.rpgConstructModel()
-    mdl.meshes[0].setName(str(Name[MNIndex[i]]))
-    mdl.setBones(skeletons[int(MeshSkeletonIndex[i])])
-    mdlList.append(mdl) 
-    rapi.rpgClearBufferBinds()
-    rapi.rpgReset()
-    
-    #animetion
+    return MGNum,MVNum,GFNum,GMIndex,MNIndex,MeshSkeletonIndex
+
+def getanim(bs,addr,skeletons,SKBoneIndex,KFNum):
     anims = []
     kfBones = []
     translationKeys = []
     rotationKeys = []
     shearKeys = []
     scaleKeys = []
+    ALAddress = addr[8] 
+    AAddress = addr[9]
     for i in range(0,len(SKBoneIndex)):
         if max(KFVIndex) > 0:
             for j in range(0,len(skeletons[SKBoneIndex[i]])):
@@ -299,28 +265,71 @@ def MUALoadModel(data, mdlList):
                 kfBones[j].setRotation(rotationKeys,noesis.NOEKF_ROTATION_EULER_XYZ_3,noesis.NOEKF_INTERPOLATE_LINEAR)
                 kfBones[j].setTranslation(translationKeys,noesis.NOEKF_TRANSLATION_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
                 kfBones[j].setScale(scaleKeys,noesis.NOEKF_SCALE_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
-                translationKeys = []
-                rotationKeys = []
-                shearKeys = []
-                scaleKeys = []
                 ALAddress += 0x40
         anims.append(NoeKeyFramedAnim("DefultPose", skeletons[SKBoneIndex[i]], kfBones, frameRate = 1, flags = 0))
-        for k in range(0, MNum):
-            if MeshSkeletonIndex[k] == SKBoneIndex[i]:
-                mdlList[k].setAnims(anims)
+
+    return anims
+
+def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MNIndex,MeshSkeletonIndex,GFNum,GMIndex,SKBoneIndex,Name,skeletons,Mat,anims):
+    VAddress = addr[13]
+    FAddress = addr[14]
+    for i in range(0, Num[2]):
+        rapi.rpgSetName(str(Name[MNIndex[i]]))
+        bs.seek(VAddress, NOESEEK_ABS)
+        VBuffer = bs.readBytes(MVNum[i] * 0x50)
+        rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
+        rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
+        rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
+        rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
+        rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
+        rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
+        rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
+        for j in range(0, MGNum[i]):
+            bs.seek(FAddress , NOESEEK_ABS)
+            FBuffer = bs.readBytes(GFNum[j] * 0x2)
+            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[j], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
+            rapi.rpgSetMaterial(str(Mat[GMIndex[j]].name))
+
+    mdl = rapi.rpgConstructModel()
+    mdl.meshes[0].setName(str(Name[MNIndex[i]]))
+    mdl.setBones(skeletons[int(MeshSkeletonIndex[i])])
+    mdlList.append(mdl) 
+    rapi.rpgClearBufferBinds()
+    rapi.rpgReset()
     
+    for k in range(0, Num[2]):
+        if MeshSkeletonIndex[k] == SKBoneIndex[i]:
+            mdlList[k].setAnims(anims)
+
+def MUALoadModel(data, mdlList):
+    #no need to explicitly free the context (created contexts are auto-freed after the handler), but DO NOT hold any references to it outside of this method
+    ctx = rapi.rpgCreateContext()
+
+    #mua data
+    bs = NoeBitStream(data)
+
+    #read data
+    addr,Num = readAddress(bs)#done
+    Name = getnames(bs,Num,addr)#done
+    Mat = getmatirals(bs,Num,addr,Name)#done
+    skeletons,SKBoneIndex,KFNum = getbones(bs,Num,addr,Name)#done
+    MGNum,MVNum,GFNum,GMIndex,MNIndex,MeshSkeletonIndex = getmesh(bs,Num,addr)#done
+    anims = getanim(bs,addr,skeletons,SKBoneIndex,KFNum)
+    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MNIndex,MeshSkeletonIndex,GFNum,GMIndex,Name,skeletons,Mat,anims)
+
+    
+    '''
     #Import animetion
+    ab = NoeBitStream(rapi.loadPairedFileOptional("model motion",".mmot"))
     if ab.data != None:
         addr2 = []
         Num2 = []
-	
-        bc = 0
-        while bc <= 10:
+
+        for bc in range(0,10):
             ab.seek(0x20+bc*0x10, NOESEEK_ABS)
             addr2.append(ab.readInt())
             ab.seek(0x24+bc*0x10, NOESEEK_ABS)
             Num2.append(ab.readInt())
-            bc += 1
     
         ABNum = Num2[1]
         ALAddress = addr2[2]#animetion key frame list
@@ -420,6 +429,7 @@ def MUALoadModel(data, mdlList):
             for j in range(0,MNum):
                 if str(Name2[LMNIndex]) == str(mdlList[j].meshes[0].name):
                     mdlList[j].setAnims(anims)
+    '''
     
     rapi.setPreviewOption("drawAllModels","1")
     rapi.setPreviewOption("setAngOfs", "0 90 90")
