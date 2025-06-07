@@ -52,8 +52,8 @@ def readAddress(bs):
     [0]#Skeleton
     [1]#bone
     [2]#model
-    [3]#vertex group (for matirial slot)
-    [4]#matirial
+    [3]#vertex group (for Material slot)
+    [4]#material
     [5]#texture assign
     [6]#texture name Index
     [7]#texture uv animation
@@ -94,54 +94,54 @@ def getnames(bs,Num,addr):
     return Name
 
 def getbones(bs,Num,addr,Name):
-    bones = []
     skeletons = []
     SKoffset = []
     SKboneNum = []
-    SKBoneIndex = []
-    KFNum = []#defult animation key frame
+    AnimSkellist = []#animated skeleton list
+    KFNums = []#defult animation key frame
     KFVIndex = []#key frame value Index
     SKAddress = addr[0]
     BAddress = addr[1]
 
     for sk in range(0, Num[0]):
-            bs.seek(SKAddress)
-            SKoffset.append(bs.readUInt())
-            SKboneNum.append(bs.readUInt())
-            SKAddress += 0x20
-            for b in range(0, SKboneNum[sk]):
-                    bs.seek(BAddress, NOESEEK_ABS)
-                    boneNameIndex = bs.readUInt()
-                    boneType = bs.readUInt()
-                    if boneType == 5:
-                        SKBoneIndex.append(sk) 
-                    Tran = NoeVec3.fromBytes(bs.readBytes(12))
-                    Rot = NoeAngles.toDegrees((NoeVec3.fromBytes(bs.readBytes(12))))
-                    Scal = NoeVec3.fromBytes(bs.readBytes(12))
-                    bs.seek(BAddress + 0x3C , NOESEEK_ABS)
-                    bonePIndex = bs.readInt()
-                    bs.seek(BAddress + 0x48 , NOESEEK_ABS)
-                    Mat44 = NoeMat44.fromBytes(bs.readBytes(0x40), NOE_LITTLEENDIAN )
-                    boneMat = Mat44.toMat43()
-                    bs.seek(BAddress + 0x108 , NOESEEK_ABS)
-                    KFNum.append(bs.readUInt())
-                    if KFNum[b]:
-                        KFVIndex.append(bs.readUInt())
-                        KFVIndex.append(bs.readUInt())
-                        KFVIndex.append(bs.readUInt())
-                        KFVIndex.append(bs.readUInt())
-                    bones.append(NoeBone(b,str(Name[boneNameIndex]), boneMat, None , bonePIndex))
-                    BAddress += 0x130
-            for b in range(0, SKboneNum[sk]):
-                    p = bones[b].parentIndex
-                    if p != -1:
-                        bones[b].setMatrix(bones[b].getMatrix() * bones[p].getMatrix() )
-            skeletons.append(bones)
+        bs.seek(SKAddress)
+        SKoffset.append(bs.readUInt())
+        SKboneNum.append(bs.readUInt())
+        SKAddress += 0x20
+        bones = []
+        for b in range(0, SKboneNum[sk]):
+            bs.seek(BAddress, NOESEEK_ABS)
+            boneNameIndex = bs.readUInt()
+            boneType = bs.readUInt()
+            Tran = NoeVec3.fromBytes(bs.readBytes(12))
+            Rot = NoeAngles.toDegrees((NoeVec3.fromBytes(bs.readBytes(12))))
+            Scal = NoeVec3.fromBytes(bs.readBytes(12))
+            bs.seek(BAddress + 0x3C , NOESEEK_ABS)
+            bonePIndex = bs.readInt()
+            bs.seek(BAddress + 0x48 , NOESEEK_ABS)
+            Mat44 = NoeMat44.fromBytes(bs.readBytes(0x40), NOE_LITTLEENDIAN )
+            boneMat = Mat44.toMat43()
+            bs.seek(BAddress + 0x108 , NOESEEK_ABS)
+            KFNum = bs.readUInt()
+            if KFNum:#four type animation value Index
+                KFVIndex.append(bs.readUInt())
+                KFVIndex.append(bs.readUInt())
+                KFVIndex.append(bs.readUInt())
+                KFVIndex.append(bs.readUInt())
+                if sk not in AnimSkellist:
+                    AnimSkellist.append(sk) 
+            BAddress += 0x130
+            bones.append(NoeBone(b,str(Name[boneNameIndex]), boneMat, None , bonePIndex))       
+        for b in range(0, SKboneNum[sk]):
+                p = bones[b].parentIndex
+                if p != -1:
+                    bones[b].setMatrix(bones[b].getMatrix() * bones[p].getMatrix() )
+        skeletons.append(bones)
 
-    return skeletons,SKBoneIndex,KFNum
+    return skeletons,AnimSkellist
 
-def getmatirals(bs,Num,addr,Name):
-    MTIndex = []#Matirial texture index
+def getmaterials(bs,Num,addr,Name):
+    MTIndex = []#Material texture index
     TNAIndex = []#Texture Name Assign Index
     TNIndex = []#Texture Name Index
     Mat = []
@@ -181,7 +181,7 @@ def getmesh(bs,Num,addr):
     MVoffset = []
     MNIndex = []#Mesh Name Index
     MSRIndex = []#Mesh Scence Root Skeleton Index
-    GMIndex = []#group Matirial Index
+    GMIndex = []#group Material Index
     GFNum = []#group face triangle list Num
     GFoffset = []
     GEvb = []#group evb value Num
@@ -210,9 +210,9 @@ def getmesh(bs,Num,addr):
             GEvb.append(bs.readInt())
             GAddress += 0x20
 
-    return MGNum,MVNum,GFNum,GMIndex,MNIndex,MeshSkeletonIndex
+    return MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,MeshSkeletonIndex
 
-def getanim(bs,addr,skeletons,SKBoneIndex,KFNum):
+def getanim(bs,addr,skeletons,AnimSkellist):
     anims = []
     kfBones = []
     translationKeys = []
@@ -221,103 +221,56 @@ def getanim(bs,addr,skeletons,SKBoneIndex,KFNum):
     scaleKeys = []
     ALAddress = addr[8] 
     AAddress = addr[9]
-    for i in range(0,len(SKBoneIndex)):
-        if max(KFVIndex) > 0:
-            for j in range(0,len(skeletons[SKBoneIndex[i]])):
-                bs.seek(ALAddress + 0x4, NOESEEK_ABS)
-                trankeys = bs.readUInt()
-                bs.seek(ALAddress + 0x14, NOESEEK_ABS)
-                rotkeys = bs.readUInt()
-                bs.seek(ALAddress + 0x24, NOESEEK_ABS)
-                shrkeys = bs.readUInt()
-                bs.seek(ALAddress + 0x34, NOESEEK_ABS)
-                scalkeys = bs.readUInt()
-                for k in range(0,trankeys):
-                    bs.seek(AAddress, NOESEEK_ABS)
-                    tran = NoeVec3.fromBytes(bs.readBytes(12))
-                    bs.seek(AAddress + 0x10, NOESEEK_ABS)
-                    time = bs.readUInt()
-                    translationKeys.append(NoeKeyFramedValue(time,tran))
-                    AAddress += 0x20
-                for l in range(0,rotkeys):
-                    bs.seek(AAddress, NOESEEK_ABS)
-                    rot = NoeAngles.fromBytes(bs.readBytes(12))
-                    rot = rot.toDegrees()
-                    bs.seek(AAddress + 0x10, NOESEEK_ABS)
-                    time = bs.readUInt()
-                    rotationKeys.append(NoeKeyFramedValue(time,rot))
-                    AAddress += 0x20
-                for m in range(0,shrkeys):
-                    bs.seek(AAddress, NOESEEK_ABS)
-                    shr = NoeQuat.fromBytes(bs.readBytes(16))
-                    bs.seek(AAddress + 0x10, NOESEEK_ABS)
-                    time = bs.readUInt()
-                    shearKeys.append(NoeKeyFramedValue(time,shr))
-                    AAddress += 0x20
-                for n in range(0,scalkeys):
-                    bs.seek(AAddress, NOESEEK_ABS)
-                    scal = NoeVec3.fromBytes(bs.readBytes(12))
-                    bs.seek(AAddress + 0x10, NOESEEK_ABS)
-                    time = bs.readUInt()
-                    scaleKeys.append(NoeKeyFramedValue(time,scal))
-                    AAddress += 0x20
-                kfBones.append(NoeKeyFramedBone(j))
-                kfBones[j].setRotation(rotationKeys,noesis.NOEKF_ROTATION_EULER_XYZ_3,noesis.NOEKF_INTERPOLATE_LINEAR)
-                kfBones[j].setTranslation(translationKeys,noesis.NOEKF_TRANSLATION_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
-                kfBones[j].setScale(scaleKeys,noesis.NOEKF_SCALE_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
-                ALAddress += 0x40
-        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[SKBoneIndex[i]], kfBones, frameRate = 1, flags = 0))
+    for i in range(0,len(AnimSkellist)):
+        for j in range(0,len(skeletons[AnimSkellist[i]])):
+            bs.seek(ALAddress + 0x4, NOESEEK_ABS)
+            tranframes = bs.readUInt()
+            bs.seek(ALAddress + 0x14, NOESEEK_ABS)
+            rotframes = bs.readUInt()
+            bs.seek(ALAddress + 0x24, NOESEEK_ABS)
+            shrframes = bs.readUInt()
+            bs.seek(ALAddress + 0x34, NOESEEK_ABS)
+            scalframes = bs.readUInt()
+            for k in range(0,tranframes):
+                bs.seek(AAddress, NOESEEK_ABS)
+                tran = NoeVec3.fromBytes(bs.readBytes(12))
+                bs.seek(AAddress + 0x10, NOESEEK_ABS)
+                time = bs.readUInt()
+                translationKeys.append(NoeKeyFramedValue(time,tran))
+                AAddress += 0x20
+            for l in range(0,rotframes):
+                bs.seek(AAddress, NOESEEK_ABS)
+                rot = NoeAngles.fromBytes(bs.readBytes(12))
+                rot = rot.toDegrees()
+                bs.seek(AAddress + 0x10, NOESEEK_ABS)
+                time = bs.readUInt()
+                rotationKeys.append(NoeKeyFramedValue(time,rot))
+                AAddress += 0x20
+            for m in range(0,shrframes):
+                bs.seek(AAddress, NOESEEK_ABS)
+                shr = NoeQuat.fromBytes(bs.readBytes(16))
+                bs.seek(AAddress + 0x10, NOESEEK_ABS)
+                time = bs.readUInt()
+                shearKeys.append(NoeKeyFramedValue(time,shr))
+                AAddress += 0x20
+            for n in range(0,scalframes):
+                bs.seek(AAddress, NOESEEK_ABS)
+                scal = NoeVec3.fromBytes(bs.readBytes(12))
+                bs.seek(AAddress + 0x10, NOESEEK_ABS)
+                time = bs.readUInt()
+                scaleKeys.append(NoeKeyFramedValue(time,scal))
+                AAddress += 0x20
+            kfBones.append(NoeKeyFramedBone(j))
+            kfBones[j].setRotation(rotationKeys,noesis.NOEKF_ROTATION_EULER_XYZ_3,noesis.NOEKF_INTERPOLATE_LINEAR)
+            kfBones[j].setTranslation(translationKeys,noesis.NOEKF_TRANSLATION_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
+            kfBones[j].setScale(scaleKeys,noesis.NOEKF_SCALE_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
+            ALAddress += 0x40
+        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[AnimSkellist[i]], kfBones, frameRate = 1, flags = 0))
 
     return anims
 
-def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MNIndex,MeshSkeletonIndex,GFNum,GMIndex,SKBoneIndex,Name,skeletons,Mat,anims):
-    VAddress = addr[13]
-    FAddress = addr[14]
-    for i in range(0, Num[2]):
-        rapi.rpgSetName(str(Name[MNIndex[i]]))
-        bs.seek(VAddress, NOESEEK_ABS)
-        VBuffer = bs.readBytes(MVNum[i] * 0x50)
-        rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
-        rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
-        rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
-        rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
-        rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
-        rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
-        rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
-        for j in range(0, MGNum[i]):
-            bs.seek(FAddress , NOESEEK_ABS)
-            FBuffer = bs.readBytes(GFNum[j] * 0x2)
-            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[j], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
-            rapi.rpgSetMaterial(str(Mat[GMIndex[j]].name))
-
-    mdl = rapi.rpgConstructModel()
-    mdl.meshes[0].setName(str(Name[MNIndex[i]]))
-    mdl.setBones(skeletons[int(MeshSkeletonIndex[i])])
-    mdlList.append(mdl) 
-    rapi.rpgClearBufferBinds()
-    rapi.rpgReset()
-    
-    for k in range(0, Num[2]):
-        if MeshSkeletonIndex[k] == SKBoneIndex[i]:
-            mdlList[k].setAnims(anims)
-
-def MUALoadModel(data, mdlList):
-    #no need to explicitly free the context (created contexts are auto-freed after the handler), but DO NOT hold any references to it outside of this method
-    ctx = rapi.rpgCreateContext()
-
-    #mua data
-    bs = NoeBitStream(data)
-
-    #read data
-    addr,Num = readAddress(bs)#done
-    Name = getnames(bs,Num,addr)#done
-    Mat = getmatirals(bs,Num,addr,Name)#done
-    skeletons,SKBoneIndex,KFNum = getbones(bs,Num,addr,Name)#done
-    MGNum,MVNum,GFNum,GMIndex,MNIndex,MeshSkeletonIndex = getmesh(bs,Num,addr)#done
-    anims = getanim(bs,addr,skeletons,SKBoneIndex,KFNum)
-    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MNIndex,MeshSkeletonIndex,GFNum,GMIndex,Name,skeletons,Mat,anims)
-
-    
+def Importanim():
+    pass
     '''
     #Import animetion
     ab = NoeBitStream(rapi.loadPairedFileOptional("model motion",".mmot"))
@@ -375,21 +328,21 @@ def MUALoadModel(data, mdlList):
         kfBones = []
         for i in range(0,ABNum):
                 ab.seek(ALAddress + 0x4, NOESEEK_ABS)
-                trankeys = ab.readInt()
+                tranframes = ab.readInt()
                 ab.seek(ALAddress + 0x14, NOESEEK_ABS)
-                rotkeys = ab.readInt()
+                rotframes = ab.readInt()
                 ab.seek(ALAddress + 0x24, NOESEEK_ABS)
-                shrkeys = ab.readInt()
+                shrframes = ab.readInt()
                 ab.seek(ALAddress + 0x34, NOESEEK_ABS)
-                scalkeys = ab.readInt()
-                for j in range(0,trankeys):
+                scalframes = ab.readInt()
+                for j in range(0,tranframes):
                     ab.seek(AAddress, NOESEEK_ABS)
                     tran = NoeVec3.fromBytes(ab.readBytes(12))
                     ab.seek(AAddress + 0x10, NOESEEK_ABS)
                     time = ab.readUInt()
                     translationKeys.append(NoeKeyFramedValue(time,tran))
                     AAddress += 0x20
-                for k in range(0,rotkeys):
+                for k in range(0,rotframes):
                     ab.seek(AAddress, NOESEEK_ABS)
                     rot = NoeAngles.fromBytes(ab.readBytes(12))
                     rot = rot.toDegrees()
@@ -397,14 +350,14 @@ def MUALoadModel(data, mdlList):
                     time = ab.readUInt()
                     rotationKeys.append(NoeKeyFramedValue(time,rot))
                     AAddress += 0x20
-                for l in range(0,shrkeys):
+                for l in range(0,shrframes):
                     ab.seek(AAddress, NOESEEK_ABS)
                     shr = NoeQuat.fromBytes(ab.readBytes(16))
                     ab.seek(AAddress + 0x10, NOESEEK_ABS)
                     time = ab.readUInt()
                     shearKeys.append(NoeKeyFramedValue(time,shr))
                     AAddress += 0x20
-                for m in range(0,scalkeys):
+                for m in range(0,scalframes):
                     ab.seek(AAddress, NOESEEK_ABS)
                     scal = NoeVec3.fromBytes(ab.readBytes(12))
                     ab.seek(AAddress + 0x10, NOESEEK_ABS)
@@ -429,7 +382,56 @@ def MUALoadModel(data, mdlList):
             for j in range(0,MNum):
                 if str(Name2[LMNIndex]) == str(mdlList[j].meshes[0].name):
                     mdlList[j].setAnims(anims)
+
     '''
+
+def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,MeshSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkellist,Name,skeletons,Mat,anims):
+    VAddress = addr[13]
+    FAddress = addr[14]
+    GIndex = 0
+    for i in range(0, Num[2]):
+        rapi.rpgSetName(str(Name[MNIndex[i]]))
+        bs.seek(VAddress + MVoffset[i] * 0x50, NOESEEK_ABS)
+        VBuffer = bs.readBytes(MVNum[i] * 0x50)
+        rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
+        rapi.rpgBindNormalBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 12)
+        rapi.rpgBindTangentBufferOfs(VBuffer,noesis.RPGEODATA_INT, 80, 24)
+        rapi.rpgBindUV1BufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 36)
+        rapi.rpgBindColorBufferOfs(VBuffer, noesis.RPGEODATA_UBYTE, 80, 52,4)
+        rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
+        rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
+        for j in range(0, MGNum[i]):
+            bs.seek(FAddress + GFoffset[GIndex] * 0x2 , NOESEEK_ABS)
+            FBuffer = bs.readBytes(GFNum[GIndex] * 0x2)
+            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[GIndex], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
+            rapi.rpgSetMaterial(str(Mat[GMIndex[GIndex]].name))
+            GIndex += 1
+        
+        mdl = rapi.rpgConstructModel()
+        mdl.setBones(skeletons[int(MeshSkeletonIndex[i])])
+        mdlList.append(mdl) 
+    rapi.rpgClearBufferBinds()
+    rapi.rpgReset()
+    
+    for k in range(0, Num[2]):
+        if MeshSkeletonIndex[k] in AnimSkellist:
+            mdlList[k].setAnims(anims)
+
+def MUALoadModel(data, mdlList):
+    #no need to explicitly free the context (created contexts are auto-freed after the handler), but DO NOT hold any references to it outside of this method
+    ctx = rapi.rpgCreateContext()
+
+    #mua data
+    bs = NoeBitStream(data)
+
+    #read data
+    addr,Num = readAddress(bs)#done
+    Name = getnames(bs,Num,addr)#done
+    Mat = getmaterials(bs,Num,addr,Name)#done
+    skeletons,AnimSkellist = getbones(bs,Num,addr,Name)#done
+    MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,MeshSkeletonIndex = getmesh(bs,Num,addr)#done
+    anims = getanim(bs,addr,skeletons,AnimSkellist)#done
+    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,MeshSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkellist,Name,skeletons,Mat,anims)
     
     rapi.setPreviewOption("drawAllModels","1")
     rapi.setPreviewOption("setAngOfs", "0 90 90")
