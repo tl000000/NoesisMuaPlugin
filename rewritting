@@ -12,7 +12,6 @@ def registerNoesisTypes():
     #noesis.setHandlerWriteModel(handle, noepyWriteModel)
     #any noesis.NMSHAREDFL_* flags can be applied here, to affect the model which is handed off to the exporter.
     #adding noesis.NMSHAREDFL_FLATWEIGHTS_FORCE4 would force us to 4 weights per vert.
-    noesis.setTypeSharedModelFlags(handle, noesis.NMSHAREDFL_FLATWEIGHTS)
     if debug:
         noesis.logPopup()
         #print("The log can be useful for catching debug prints from preview loads.\nBut don't leave it on when you release your script, or it will probably annoy people.")
@@ -23,9 +22,8 @@ NOEPY_HEADER = "MUA"
 
 export_option = 0 
 '''
-0 for separate submesh
-1 for skeleton and animtion in model
-2 for mesh only
+0 defult export
+1 Import animetion
 '''
 	  
 #check if it's this type based on the data
@@ -97,8 +95,7 @@ def getbones(bs,Num,addr,Name):
     skeletons = []
     SKoffset = []
     SKboneNum = []
-    AnimSkellist = []#animated skeleton list
-    KFNums = []#defult animation key frame
+    AnimSkelIndex = []#animated skeleton list
     KFVIndex = []#key frame value Index
     SKAddress = addr[0]
     BAddress = addr[1]
@@ -122,14 +119,14 @@ def getbones(bs,Num,addr,Name):
             Mat44 = NoeMat44.fromBytes(bs.readBytes(0x40), NOE_LITTLEENDIAN )
             boneMat = Mat44.toMat43()
             bs.seek(BAddress + 0x108 , NOESEEK_ABS)
-            KFNum = bs.readUInt()
+            KFNum = bs.readUInt()#defult animation key frame
             if KFNum:#four type animation value Index
                 KFVIndex.append(bs.readUInt())
                 KFVIndex.append(bs.readUInt())
                 KFVIndex.append(bs.readUInt())
                 KFVIndex.append(bs.readUInt())
-                if sk not in AnimSkellist:
-                    AnimSkellist.append(sk) 
+                if sk not in AnimSkelIndex:
+                    AnimSkelIndex.append(sk) 
             BAddress += 0x130
             bones.append(NoeBone(b,str(Name[boneNameIndex]), boneMat, None , bonePIndex))       
         for b in range(0, SKboneNum[sk]):
@@ -138,7 +135,7 @@ def getbones(bs,Num,addr,Name):
                     bones[b].setMatrix(bones[b].getMatrix() * bones[p].getMatrix() )
         skeletons.append(bones)
 
-    return skeletons,AnimSkellist
+    return skeletons,AnimSkelIndex
 
 def getmaterials(bs,Num,addr,Name):
     MTIndex = []#Material texture index
@@ -174,7 +171,7 @@ def getmaterials(bs,Num,addr,Name):
     return Mat
 
 def getmesh(bs,Num,addr):
-    MeshSkeletonIndex = []#Mesh Skeleton Index
+    ModelSkeletonIndex = []#Mesh Skeleton Index
     MGNum =[]#mesh vertex group Num
     MGoffeet =[]
     MVNum = []#mesh vertext Num
@@ -191,7 +188,7 @@ def getmesh(bs,Num,addr):
 
     for i in range(0, Num[2]):
         bs.seek(MAddress, NOESEEK_ABS)
-        MeshSkeletonIndex.append(int(bs.readFloat()))
+        ModelSkeletonIndex.append(int(bs.readFloat()))
         bs.seek(MAddress + 0x8, NOESEEK_ABS)
         MGNum.append(bs.readInt())
         MGoffeet.append(bs.readInt())
@@ -210,9 +207,9 @@ def getmesh(bs,Num,addr):
             GEvb.append(bs.readInt())
             GAddress += 0x20
 
-    return MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,MeshSkeletonIndex
+    return MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,ModelSkeletonIndex
 
-def getanim(bs,addr,skeletons,AnimSkellist):
+def getanim(bs,addr,skeletons,AnimSkelIndex):
     anims = []
     kfBones = []
     translationKeys = []
@@ -221,8 +218,8 @@ def getanim(bs,addr,skeletons,AnimSkellist):
     scaleKeys = []
     ALAddress = addr[8] 
     AAddress = addr[9]
-    for i in range(0,len(AnimSkellist)):
-        for j in range(0,len(skeletons[AnimSkellist[i]])):
+    for i in range(0,len(AnimSkelIndex)):
+        for j in range(0,len(skeletons[AnimSkelIndex[i]])):
             bs.seek(ALAddress + 0x4, NOESEEK_ABS)
             tranframes = bs.readUInt()
             bs.seek(ALAddress + 0x14, NOESEEK_ABS)
@@ -264,8 +261,13 @@ def getanim(bs,addr,skeletons,AnimSkellist):
             kfBones[j].setRotation(rotationKeys,noesis.NOEKF_ROTATION_EULER_XYZ_3,noesis.NOEKF_INTERPOLATE_LINEAR)
             kfBones[j].setTranslation(translationKeys,noesis.NOEKF_TRANSLATION_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
             kfBones[j].setScale(scaleKeys,noesis.NOEKF_SCALE_VECTOR_3,noesis.NOEKF_INTERPOLATE_LINEAR)
+            translationKeys = []
+            rotationKeys = []
+            shearKeys = []
+            scaleKeys = []
             ALAddress += 0x40
-        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[AnimSkellist[i]], kfBones, frameRate = 1, flags = 0))
+        anims.append(NoeKeyFramedAnim("DefultPose", skeletons[AnimSkelIndex[i]], kfBones, frameRate = 1, flags = 0))
+        kfBones = []
 
     return anims
 
@@ -385,12 +387,12 @@ def Importanim():
 
     '''
 
-def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,MeshSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkellist,Name,skeletons,Mat,anims):
+def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,ModelSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkelIndex,Name,skeletons,Mat,anims):
     VAddress = addr[13]
     FAddress = addr[14]
+    meshes = []
     GIndex = 0
     for i in range(0, Num[2]):
-        rapi.rpgSetName(str(Name[MNIndex[i]]))
         bs.seek(VAddress + MVoffset[i] * 0x50, NOESEEK_ABS)
         VBuffer = bs.readBytes(MVNum[i] * 0x50)
         rapi.rpgBindPositionBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 0)
@@ -401,21 +403,27 @@ def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,MeshSkeleton
         rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
         rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
         for j in range(0, MGNum[i]):
+            VertexCount=rapi.rpgGetVertexCount()
+            print(VertexCount)
             bs.seek(FAddress + GFoffset[GIndex] * 0x2 , NOESEEK_ABS)
             FBuffer = bs.readBytes(GFNum[GIndex] * 0x2)
             rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[GIndex], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
-            rapi.rpgSetMaterial(str(Mat[GMIndex[GIndex]].name))
+            mesh = rapi.rpgConstructModel()
+            meshes.append(mesh.meshes[0])
+            meshes[j].setMaterial(str(Mat[GMIndex[GIndex]].name))
             GIndex += 1
-        
-        mdl = rapi.rpgConstructModel()
-        mdl.setBones(skeletons[int(MeshSkeletonIndex[i])])
+        rapi.rpgReset()
+
+        mdl = NoeModel()
+        mdl.setMeshes(meshes)
+        mdl.setBones(skeletons[int(ModelSkeletonIndex[i])])
+        for k in range(0, len(AnimSkelIndex)):
+            if ModelSkeletonIndex[i] == AnimSkelIndex[k]:
+                mdl.setAnims(anims)
         mdlList.append(mdl) 
-    rapi.rpgClearBufferBinds()
-    rapi.rpgReset()
+        meshes = []
     
-    for k in range(0, Num[2]):
-        if MeshSkeletonIndex[k] in AnimSkellist:
-            mdlList[k].setAnims(anims)
+    rapi.rpgClearBufferBinds()
 
 def MUALoadModel(data, mdlList):
     #no need to explicitly free the context (created contexts are auto-freed after the handler), but DO NOT hold any references to it outside of this method
@@ -428,10 +436,10 @@ def MUALoadModel(data, mdlList):
     addr,Num = readAddress(bs)#done
     Name = getnames(bs,Num,addr)#done
     Mat = getmaterials(bs,Num,addr,Name)#done
-    skeletons,AnimSkellist = getbones(bs,Num,addr,Name)#done
-    MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,MeshSkeletonIndex = getmesh(bs,Num,addr)#done
-    anims = getanim(bs,addr,skeletons,AnimSkellist)#done
-    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,MeshSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkellist,Name,skeletons,Mat,anims)
+    skeletons,AnimSkelIndex = getbones(bs,Num,addr,Name)#done
+    MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,ModelSkeletonIndex = getmesh(bs,Num,addr)#done
+    anims = getanim(bs,addr,skeletons,AnimSkelIndex)#done
+    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,ModelSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkelIndex,Name,skeletons,Mat,anims)
     
     rapi.setPreviewOption("drawAllModels","1")
     rapi.setPreviewOption("setAngOfs", "0 90 90")
