@@ -403,11 +403,11 @@ def ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,ModelSkeleto
         rapi.rpgBindBoneIndexBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 56,3)
         rapi.rpgBindBoneWeightBufferOfs(VBuffer, noesis.RPGEODATA_FLOAT, 80, 68,3)
         for j in range(0, MGNum[i]):
-            VertexCount=rapi.rpgGetVertexCount()
-            print(VertexCount)
             bs.seek(FAddress + GFoffset[GIndex] * 0x2 , NOESEEK_ABS)
             FBuffer = bs.readBytes(GFNum[GIndex] * 0x2)
-            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[GIndex], noesis.RPGEO_TRIANGLE_STRIP_FLIPPED, 1)
+            rapi.rpgCommitTriangles(FBuffer, noesis.RPGEODATA_USHORT, GFNum[GIndex], noesis.RPGEO_TRIANGLE_STRIP, 1)
+            VertexCount=rapi.rpgGetVertexCount()
+            print(VertexCount)
             mesh = rapi.rpgConstructModel()
             meshes.append(mesh.meshes[0])
             meshes[j].setMaterial(str(Mat[GMIndex[GIndex]].name))
@@ -439,7 +439,7 @@ def MUALoadModel(data, mdlList):
     skeletons,AnimSkelIndex = getbones(bs,Num,addr,Name)#done
     MGNum,MVNum,MVoffset,GFNum,GFoffset,GMIndex,MNIndex,ModelSkeletonIndex = getmesh(bs,Num,addr)#done
     anims = getanim(bs,addr,skeletons,AnimSkelIndex)#done
-    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,ModelSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkelIndex,Name,skeletons,Mat,anims)
+    ConsturctModel(bs,mdlList,Num,addr,MGNum,MVNum,MVoffset,MNIndex,ModelSkeletonIndex,GFNum,GFoffset,GMIndex,AnimSkelIndex,Name,skeletons,Mat,anims)#fixing
     
     rapi.setPreviewOption("drawAllModels","1")
     rapi.setPreviewOption("setAngOfs", "0 90 90")
