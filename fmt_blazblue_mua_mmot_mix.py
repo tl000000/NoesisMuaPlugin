@@ -53,7 +53,8 @@ def noepyLoadModel(data, mdlList):
         bc += 1
     
     SKAddress = addr[0]#Skeleton
-    BAddress = addr[1]#bone
+    boneStart = addr[1]
+    BAddress = boneStart#bone
     MAddress = addr[2]#model
     PAddress = addr[3]#mesh
     MTAddress = addr[4]#matirial
@@ -209,6 +210,7 @@ def noepyLoadModel(data, mdlList):
     
     #model Consturct
     PIndex = 0
+    meshes = []
     for i in range(0, MCount):
         bs.seek(VAddress , NOESEEK_ABS)
         VBuffer = bs.readBytes(MVCount[i] * 0x50)
@@ -228,11 +230,17 @@ def noepyLoadModel(data, mdlList):
             PIndex += 1
         VAddress += MVCount[i] * 0x50
         mdl = rapi.rpgConstructModelAndSort()
-        mdlList.append(mdl)
         rapi.rpgClearBufferBinds()
         rapi.rpgReset()
-        mdlList[i].meshes[0].setName(Name[MNIndex[i]])
-        mdlList[i].setBones(skeletons[MeshSkeletonIndex[i]])
+        for mesh in mdl.meshes:
+            mesh.setName(Name[MNIndex[i]])
+            meshes.append(mesh)
+
+    finalModel = NoeModel()
+    finalModel.setMeshes(meshes)
+    if MeshSkeletonIndex:
+        finalModel.setBones(skeletons[MeshSkeletonIndex[0]])
+    mdlList.append(finalModel)
         
     #animetion
     anims = []
@@ -294,11 +302,9 @@ def noepyLoadModel(data, mdlList):
             boneIndex += 1
         anims.append(NoeKeyFramedAnim("DefultPose", skeletons[i], kfBones, frameRate = 1, flags = 0))
         kfBones = []
-        for o in range(0, MCount):
-            if MeshSkeletonIndex[o] == i:
-                mdlList[o].setAnims(anims)
+        if i in MeshSkeletonIndex:
+            finalModel.setAnims(anims)
         anims = []
-                
         
     #Import animetion
     ab = NoeBitStream(rapi.loadPairedFileOptional("model motion",".mmot"))
@@ -342,10 +348,11 @@ def noepyLoadModel(data, mdlList):
     
         for i in range(0, SICount2):
                 ab.seek(SAddress2 + stringoffset2[i], NOESEEK_ABS)
-                Name2.append(bs.readBytes(stringlength2[i]).decode("Shift_JIS"))
+                Name2.append(ab.readBytes(stringlength2[i]).decode("Shift_JIS"))
                 
         #bone
         bones = []
+        BAddress = boneStart
         for b in range(0, ABCount):
                 bs.seek(BAddress, NOESEEK_ABS)
                 Mat44 = NoeMat44.fromBytes(bs.readBytes(0x40), NOE_LITTLEENDIAN )
@@ -412,9 +419,9 @@ def noepyLoadModel(data, mdlList):
             ab.seek(LMAddress + 0x4, NOESEEK_ABS)
             LMNIndex = ab.readUInt()
             LMAddress += 0x20
-            for j in range(0,MCount):
-                if Name2[LMNIndex] == str(mdlList[j].meshes[0].name):
-                    mdlList[j].setAnims(anims)
+            for mesh in finalModel.meshes:
+                if Name2[LMNIndex] == str(mesh.name):
+                    finalModel.setAnims(anims)
     
     rapi.setPreviewOption("drawAllModels","1")
     #rapi.setPreviewOption("setAngOfs", "0 90 90")
